@@ -1,0 +1,58 @@
+### SampleApp API - Admin Configuration/Settings Endpoints
+### VSCode REST Client Extension: https://marketplace.visualstudio.com/items?itemName=humao.rest-client
+### Uses variables from backend/.env (configured in .vscode/settings.json)
+### Requires: Admin authentication
+
+@contentType = application/json
+
+### Get token from auth.rest login endpoint first
+@token = your_jwt_token_here
+
+
+### ===== CONFIGURATION MANAGEMENT =====
+
+### List All Config Items
+GET {{$dotenv API_URL}}/api/admin/config
+Authorization: Bearer {{token}}
+
+### List Config Items by Category
+GET {{$dotenv API_URL}}/api/admin/config?category=general
+Authorization: Bearer {{token}}
+
+### List All Categories
+GET {{$dotenv API_URL}}/api/admin/config/categories
+Authorization: Bearer {{token}}
+
+### Get Config Grouped by Category
+GET {{$dotenv API_URL}}/api/admin/config/by-category
+Authorization: Bearer {{token}}
+
+### Get Single Config Item
+GET {{$dotenv API_URL}}/api/admin/config/app_name
+Authorization: Bearer {{token}}
+
+### Update Single Config Item
+PUT {{$dotenv API_URL}}/api/admin/config/app_name
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+    "value": "{{$dotenv APP_NAME}}"
+}
+
+### Bulk Update Config Items
+PUT {{$dotenv API_URL}}/api/admin/config
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+    "configs": {
+        "app_name": "{{$dotenv APP_NAME}}",
+        "support_email": "support@example.com",
+        "maintenance_mode": "false"
+    }
+}
+
+### Clear Cache and Seed Default Config
+POST {{$dotenv API_URL}}/api/admin/config/clear-cache
+Authorization: Bearer {{token}}

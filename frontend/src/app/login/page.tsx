@@ -1,16 +1,49 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [redirectUrl, setRedirectUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Get redirect URL from query parameter
+    const redirect = searchParams.get('redirect')
+    if (redirect) {
+      // Sanitize redirect URL - only allow relative paths starting with /
+      // This prevents open redirect vulnerabilities and protocol handler issues
+      let safePath: string | null = null
+
+      // If it already starts with /, use it directly
+      if (redirect.startsWith('/') && !redirect.startsWith('//')) {
+        safePath = redirect
+      } else {
+        // Try to parse as URL and extract path
+        try {
+          // Handle cases like "localhost:3000/admin/roles" or "http://localhost:3000/admin/roles"
+          const urlToParse = redirect.includes('://') ? redirect : `http://${redirect}`
+          const url = new URL(urlToParse)
+          // Only use the path portion
+          safePath = url.pathname + url.search + url.hash
+        } catch {
+          // Invalid URL, ignore
+        }
+      }
+
+      // Only set if we got a valid path starting with /
+      if (safePath && safePath.startsWith('/')) {
+        setRedirectUrl(safePath)
+      }
+    }
+  }, [searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -21,7 +54,13 @@ export default function LoginPage() {
       const data = await api.auth.login(email, password)
       localStorage.setItem('token', data.access_token)
       localStorage.setItem('user', JSON.stringify(data.user))
-      router.push('/dashboard')
+
+      // Redirect to specified URL if provided, otherwise based on user type
+      if (redirectUrl) {
+        router.push(redirectUrl)
+      } else {
+        router.push(data.user.is_admin ? '/admin' : '/dashboard')
+      }
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials.')
     } finally {
@@ -102,5 +141,17 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   )
 }

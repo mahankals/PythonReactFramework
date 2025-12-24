@@ -1,0 +1,202 @@
+### SampleApp API - Admin RBAC (Roles & Permissions) Endpoints
+### VSCode REST Client Extension: https://marketplace.visualstudio.com/items?itemName=humao.rest-client
+### Uses variables from backend/.env (configured in .vscode/settings.json)
+### Requires: Admin authentication
+
+@contentType = application/json
+
+### Get token from auth.rest login endpoint first
+@token = your_jwt_token_here
+
+### Sample IDs (update with actual UUIDs)
+@roleId = 00000000-0000-0000-0000-000000000000
+@permissionId = 00000000-0000-0000-0000-000000000000
+@userId = 00000000-0000-0000-0000-000000000000
+@sourceRoleId = 00000000-0000-0000-0000-000000000000
+
+
+### ===== PERMISSIONS =====
+
+### List All Permissions
+GET {{$dotenv API_URL}}/api/admin/rbac/permissions
+Authorization: Bearer {{token}}
+
+### List Permissions by Resource
+GET {{$dotenv API_URL}}/api/admin/rbac/permissions?resource=users
+Authorization: Bearer {{token}}
+
+### List Active Permissions Only
+GET {{$dotenv API_URL}}/api/admin/rbac/permissions?is_active=true
+Authorization: Bearer {{token}}
+
+### Get Permission by ID
+GET {{$dotenv API_URL}}/api/admin/rbac/permissions/{{permissionId}}
+Authorization: Bearer {{token}}
+
+### Create Permission
+POST {{$dotenv API_URL}}/api/admin/rbac/permissions
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+    "name": "reports:export",
+    "display_name": "Export Reports",
+    "description": "Permission to export reports",
+    "resource": "reports",
+    "action": "export",
+    "is_active": true
+}
+
+### Update Permission
+PATCH {{$dotenv API_URL}}/api/admin/rbac/permissions/{{permissionId}}
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+    "display_name": "Updated Display Name",
+    "description": "Updated description",
+    "is_active": true
+}
+
+### Delete Permission
+DELETE {{$dotenv API_URL}}/api/admin/rbac/permissions/{{permissionId}}
+Authorization: Bearer {{token}}
+
+
+### ===== ROLES =====
+
+### List All Roles
+GET {{$dotenv API_URL}}/api/admin/rbac/roles
+Authorization: Bearer {{token}}
+
+### List Roles (include superadmin)
+GET {{$dotenv API_URL}}/api/admin/rbac/roles?include_superadmin=true
+Authorization: Bearer {{token}}
+
+### List Active Roles Only
+GET {{$dotenv API_URL}}/api/admin/rbac/roles?is_active=true
+Authorization: Bearer {{token}}
+
+### Get Role by ID
+GET {{$dotenv API_URL}}/api/admin/rbac/roles/{{roleId}}
+Authorization: Bearer {{token}}
+
+### Create Role
+POST {{$dotenv API_URL}}/api/admin/rbac/roles
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+    "name": "editor",
+    "display_name": "Editor",
+    "description": "Can edit content",
+    "priority": 50,
+    "is_active": true
+}
+
+### Create Role with Permissions
+POST {{$dotenv API_URL}}/api/admin/rbac/roles
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+    "name": "reviewer",
+    "display_name": "Reviewer",
+    "description": "Can review content",
+    "priority": 40,
+    "is_active": true,
+    "permission_ids": ["permission-uuid-1", "permission-uuid-2"]
+}
+
+### Create Role - Copy Permissions from Another Role
+POST {{$dotenv API_URL}}/api/admin/rbac/roles
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+    "name": "senior_editor",
+    "display_name": "Senior Editor",
+    "description": "Senior editor with extended permissions",
+    "priority": 60,
+    "is_active": true,
+    "copy_from_role_id": "{{sourceRoleId}}"
+}
+
+### Update Role
+PATCH {{$dotenv API_URL}}/api/admin/rbac/roles/{{roleId}}
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+    "display_name": "Updated Role Name",
+    "description": "Updated description",
+    "priority": 55,
+    "is_active": true
+}
+
+### Delete Role
+# Note: Cannot delete system roles
+DELETE {{$dotenv API_URL}}/api/admin/rbac/roles/{{roleId}}
+Authorization: Bearer {{token}}
+
+
+### ===== ROLE PERMISSIONS =====
+
+### Set All Permissions for Role (replaces existing)
+PUT {{$dotenv API_URL}}/api/admin/rbac/roles/{{roleId}}/permissions
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+    "permission_ids": [
+        "permission-uuid-1",
+        "permission-uuid-2",
+        "permission-uuid-3"
+    ]
+}
+
+### Add Single Permission to Role
+POST {{$dotenv API_URL}}/api/admin/rbac/roles/{{roleId}}/permissions/{{permissionId}}
+Authorization: Bearer {{token}}
+
+### Remove Permission from Role
+DELETE {{$dotenv API_URL}}/api/admin/rbac/roles/{{roleId}}/permissions/{{permissionId}}
+Authorization: Bearer {{token}}
+
+
+### ===== USER ROLES =====
+
+### Get User's Roles
+GET {{$dotenv API_URL}}/api/admin/rbac/users/{{userId}}/roles
+Authorization: Bearer {{token}}
+
+### Set All Roles for User (replaces existing)
+PUT {{$dotenv API_URL}}/api/admin/rbac/users/{{userId}}/roles
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+    "role_ids": [
+        "role-uuid-1",
+        "role-uuid-2"
+    ]
+}
+
+### Add Single Role to User
+POST {{$dotenv API_URL}}/api/admin/rbac/users/{{userId}}/roles/{{roleId}}
+Authorization: Bearer {{token}}
+
+### Remove Role from User
+DELETE {{$dotenv API_URL}}/api/admin/rbac/users/{{userId}}/roles/{{roleId}}
+Authorization: Bearer {{token}}
+
+
+### ===== UTILITY =====
+
+### List All Resources
+GET {{$dotenv API_URL}}/api/admin/rbac/resources
+Authorization: Bearer {{token}}
+
+### List All Actions
+GET {{$dotenv API_URL}}/api/admin/rbac/actions
+Authorization: Bearer {{token}}

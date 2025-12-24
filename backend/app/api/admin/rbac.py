@@ -56,6 +56,7 @@ class RoleCreate(BaseModel):
     priority: int = 0
     is_active: bool = True
     permission_ids: Optional[List[str]] = None
+    copy_from_role_id: Optional[str] = None  # Copy permissions from existing role
 
 
 class RoleUpdate(BaseModel):
@@ -270,14 +271,19 @@ async def delete_permission(
 @router.get("/roles", response_model=List[RoleResponse])
 async def list_roles(
     is_active: Optional[bool] = Query(None),
+    include_superadmin: bool = Query(False, description="Include superadmin role"),
     current_user: User = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """List all roles with their permissions"""
+    """List all roles with their permissions. Superadmin role excluded by default."""
     query = (
         select(Role)
         .options(selectinload(Role.permissions))
     )
+
+    # Filter out superadmin role unless explicitly requested
+    if not include_superadmin:
+        query = query.where(Role.name != "superadmin")
 
     if is_active is not None:
         query = query.where(Role.is_active == is_active)
@@ -305,7 +311,7 @@ async def create_role(
     current_user: User = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new role with optional permissions"""
+    """Create a new role with optional permissions. Can copy permissions from an existing role."""
     # Check for duplicate name
     result = await db.execute(
         select(Role).where(Role.name == data.name)
@@ -322,13 +328,34 @@ async def create_role(
         is_system=False,
     )
 
-    # Add permissions if provided
+    # Determine permissions to assign
+    permissions_to_add = []
+
+    # If copying from another role, get its permissions
+    if data.copy_from_role_id:
+        result = await db.execute(
+            select(Role)
+            .options(selectinload(Role.permissions))
+            .where(Role.id == UUID(data.copy_from_role_id))
+        )
+        source_role = result.scalar_one_or_none()
+        if not source_role:
+            raise HTTPException(status_code=404, detail="Source role to copy from not found")
+        permissions_to_add = list(source_role.permissions)
+
+    # If explicit permission_ids provided, they override or add to copied ones
     if data.permission_ids:
         result = await db.execute(
             select(Permission).where(Permission.id.in_([UUID(pid) for pid in data.permission_ids]))
         )
-        permissions = result.scalars().all()
-        role.permissions = list(permissions)
+        explicit_permissions = result.scalars().all()
+        # Merge: explicit permissions take precedence
+        existing_ids = {p.id for p in permissions_to_add}
+        for perm in explicit_permissions:
+            if perm.id not in existing_ids:
+                permissions_to_add.append(perm)
+
+    role.permissions = permissions_to_add
 
     db.add(role)
     await db.commit()

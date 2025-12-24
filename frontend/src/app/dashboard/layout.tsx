@@ -8,7 +8,8 @@ import {
   Menu,
   X,
   LayoutDashboard,
-  Users
+  Users,
+  UserCircle
 } from 'lucide-react'
 
 interface User {
@@ -31,42 +32,38 @@ export default function DashboardLayout({
 
   useEffect(() => {
     const token = localStorage.getItem('token')
-    const userData = localStorage.getItem('user')
 
     if (!token) {
-      router.push('/login')
+      router.push(`/login?redirect=${encodeURIComponent(pathname)}`)
       return
     }
 
-    // Try to use cached user data
-    if (userData && userData !== 'undefined') {
-      try {
-        setUser(JSON.parse(userData))
-        return
-      } catch {
-        // Invalid JSON, will fetch from API
-      }
-    }
-
-    // Fetch user data from API if not in localStorage
-    const fetchUser = async () => {
+    // Always validate token with API
+    const validateAndFetchUser = async () => {
       try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/me`, {
           headers: { Authorization: `Bearer ${token}` }
         })
-        if (!response.ok) throw new Error('Failed to fetch user')
-        const user = await response.json()
-        localStorage.setItem('user', JSON.stringify(user))
-        setUser(user)
+        if (!response.ok) throw new Error('Invalid token')
+        const userData = await response.json()
+        localStorage.setItem('user', JSON.stringify(userData))
+
+        // Admin users should use admin dashboard
+        if (userData.is_admin) {
+          router.push('/admin')
+          return
+        }
+
+        setUser(userData)
       } catch {
-        // Token invalid, clear and redirect
+        // Token invalid, clear and redirect to login
         localStorage.removeItem('token')
         localStorage.removeItem('user')
-        router.push('/login')
+        router.push(`/login?redirect=${encodeURIComponent(pathname)}`)
       }
     }
-    fetchUser()
-  }, [router])
+    validateAndFetchUser()
+  }, [router, pathname])
 
   const handleLogout = () => {
     localStorage.removeItem('token')
@@ -139,7 +136,7 @@ export default function DashboardLayout({
               </Link>
             ))}
 
-            {/* Admin section */}
+            {/* Admin section - commented out as admin users redirect to admin dashboard
             {user.is_admin && (
               <>
                 <div className="pt-4 pb-2">
@@ -153,8 +150,8 @@ export default function DashboardLayout({
                     href={item.href}
                     className={`
                       flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
-                      ${pathname === item.href 
-                        ? 'bg-primary/10 text-primary' 
+                      ${pathname === item.href
+                        ? 'bg-primary/10 text-primary'
                         : 'text-gray-600 hover:bg-gray-100'
                       }
                     `}
@@ -165,6 +162,7 @@ export default function DashboardLayout({
                 ))}
               </>
             )}
+            */}
           </nav>
 
           {/* User section */}
@@ -184,13 +182,22 @@ export default function DashboardLayout({
                 </p>
               </div>
             </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition"
-            >
-              <LogOut size={18} />
-              Sign Out
-            </button>
+            <div className="space-y-1">
+              <Link
+                href="/dashboard/profile"
+                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition"
+              >
+                <UserCircle size={18} />
+                Profile
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition"
+              >
+                <LogOut size={18} />
+                Sign Out
+              </button>
+            </div>
           </div>
         </div>
       </aside>

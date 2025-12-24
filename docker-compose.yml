@@ -25,11 +25,20 @@ services:
       timeout: 5s
       retries: 5
 
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"   # Web UI
+      - "1025:1025"   # SMTP
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     volumes:
       - ./backend:/app
     ports:
@@ -39,11 +48,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     env_file:
       - ./backend/.env
     environment:
       - DATABASE_URL=postgresql://cloudpe:cloudpe@db:5432/cloudpe
       - REDIS_URL=redis://redis:6379/0
+      - SMTP_HOST=mailpit
+      - SMTP_PORT=1025
+      - SMTP_USE_TLS=false
 
   celery:
     build:
@@ -57,11 +71,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     env_file:
       - ./backend/.env
     environment:
       - DATABASE_URL=postgresql://cloudpe:cloudpe@db:5432/cloudpe
       - REDIS_URL=redis://redis:6379/0
+      - SMTP_HOST=mailpit
+      - SMTP_PORT=1025
+      - SMTP_USE_TLS=false
 
   frontend:
     build:

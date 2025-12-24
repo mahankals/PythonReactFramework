@@ -1,0 +1,5 @@
+{
+  "rest-client.dotenvFilePath": "backend/.env",
+  "rest-client.confirmBeforeSend": true,
+  "rest-client.environmentVariables": {}
+}

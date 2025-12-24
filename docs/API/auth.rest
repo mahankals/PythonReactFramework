@@ -1,0 +1,81 @@
+### SampleApp API - Authentication Endpoints
+### VSCode REST Client Extension: https://marketplace.visualstudio.com/items?itemName=humao.rest-client
+### Uses variables from backend/.env (configured in .vscode/settings.json)
+
+@contentType = application/json
+
+### Variables (update after login)
+@token = your_jwt_token_here
+
+
+### ===== PUBLIC ENDPOINTS =====
+
+### Signup - Register new user
+POST {{$dotenv API_URL}}/api/auth/signup
+Content-Type: {{contentType}}
+
+{
+    "email": "newuser@example.com",
+    "password": "SecurePass123",
+    "first_name": "John",
+    "last_name": "Doe",
+    "phone": "+1234567890",
+    "company_name": "Acme Inc"
+}
+
+### Login - Get JWT token (using env credentials)
+# @name login
+POST {{$dotenv API_URL}}/api/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username={{$dotenv SUPERADMIN_EMAIL}}&password={{$dotenv SUPERADMIN_PASSWORD}}
+
+### Save token from login response
+# After running login, copy the access_token and update @token variable above
+
+
+### Forgot Password - Request reset email
+POST {{$dotenv API_URL}}/api/auth/forgot-password
+Content-Type: {{contentType}}
+
+{
+    "email": "{{$dotenv SUPERADMIN_EMAIL}}"
+}
+
+### Reset Password - Use token from email
+POST {{$dotenv API_URL}}/api/auth/reset-password
+Content-Type: {{contentType}}
+
+{
+    "token": "reset_token_from_email",
+    "new_password": "NewSecurePass123"
+}
+
+
+### ===== AUTHENTICATED ENDPOINTS =====
+
+### Get Current User Info
+GET {{$dotenv API_URL}}/api/auth/me
+Authorization: Bearer {{token}}
+
+### Update Profile
+PATCH {{$dotenv API_URL}}/api/auth/profile
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+    "first_name": "John",
+    "last_name": "Smith",
+    "phone": "+1987654321",
+    "company_name": "New Company"
+}
+
+### Change Password
+POST {{$dotenv API_URL}}/api/auth/change-password
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+    "current_password": "{{$dotenv SUPERADMIN_PASSWORD}}",
+    "new_password": "NewSecurePass456"
+}

@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     json_logs: bool = False
 
+    # Superadmin (created on first startup)
+    superadmin_email: str = "admin@example.com"
+    superadmin_password: str = "Admin@123"
+    superadmin_first_name: str = "Super"
+    superadmin_last_name: str = "Admin"
+
     # Password Reset
     password_reset_expire_minutes: int = 30
     

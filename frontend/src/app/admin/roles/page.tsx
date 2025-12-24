@@ -35,6 +35,7 @@ export default function AdminRolesPage() {
   const [formDisplayName, setFormDisplayName] = useState('')
   const [formDescription, setFormDescription] = useState('')
   const [formPermissions, setFormPermissions] = useState<string[]>([])
+  const [copyFromRoleId, setCopyFromRoleId] = useState<string>('')
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -67,6 +68,7 @@ export default function AdminRolesPage() {
     setFormDisplayName('')
     setFormDescription('')
     setFormPermissions([])
+    setCopyFromRoleId('')
     setShowModal(true)
   }
 
@@ -76,7 +78,18 @@ export default function AdminRolesPage() {
     setFormDisplayName(role.display_name)
     setFormDescription(role.description || '')
     setFormPermissions(role.permissions.map(p => p.id))
+    setCopyFromRoleId('')
     setShowModal(true)
+  }
+
+  const handleCopyFromRole = (roleId: string) => {
+    setCopyFromRoleId(roleId)
+    if (roleId) {
+      const sourceRole = roles.find(r => r.id === roleId)
+      if (sourceRole) {
+        setFormPermissions(sourceRole.permissions.map(p => p.id))
+      }
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -90,11 +103,16 @@ export default function AdminRolesPage() {
         Authorization: `Bearer ${token}`
       }
 
-      const body = {
+      const body: any = {
         name: formName,
         display_name: formDisplayName,
         description: formDescription || undefined,
         permission_ids: formPermissions
+      }
+
+      // Add copy_from_role_id only for new roles
+      if (!editingRole && copyFromRoleId) {
+        body.copy_from_role_id = copyFromRoleId
       }
 
       let response
@@ -310,6 +328,28 @@ export default function AdminRolesPage() {
                   placeholder="Optional description"
                 />
               </div>
+
+              {/* Copy from role - only show when creating */}
+              {!editingRole && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Copy permissions from</label>
+                  <select
+                    value={copyFromRoleId}
+                    onChange={(e) => handleCopyFromRole(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white"
+                  >
+                    <option value="">-- Select a role to copy --</option>
+                    {roles.map((role) => (
+                      <option key={role.id} value={role.id}>
+                        {role.display_name} ({role.permissions.length} permissions)
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Selecting a role will copy its permissions. You can modify them below.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium mb-2">Permissions</label>

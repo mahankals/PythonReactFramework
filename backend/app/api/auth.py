@@ -12,6 +12,7 @@ from app.database import get_db
 from app.config import settings
 from app.models.user import User
 from app.models.password_reset import PasswordResetToken
+from app.models.rbac import Role
 from app.tasks.email import send_password_reset_email
 
 
@@ -73,6 +74,22 @@ class ResetPasswordRequest(BaseModel):
 
 
 class ResetPasswordResponse(BaseModel):
+    message: str
+
+
+class ProfileUpdateRequest(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
+    company_name: Optional[str] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class MessageResponse(BaseModel):
     message: str
 
 
@@ -146,7 +163,11 @@ async def signup(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
             detail="Email already registered"
         )
     
-    # Create user
+    # Get default "user" role first
+    result = await db.execute(select(Role).where(Role.name == "user"))
+    default_role = result.scalar_one_or_none()
+
+    # Create user with default role
     user = User(
         email=user_data.email,
         password_hash=get_password_hash(user_data.password),
@@ -154,6 +175,7 @@ async def signup(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
         last_name=user_data.last_name,
         phone=user_data.phone,
         company_name=user_data.company_name,
+        roles=[default_role] if default_role else [],
     )
     db.add(user)
     await db.commit()
@@ -318,3 +340,65 @@ async def reset_password(
     await db.commit()
 
     return ResetPasswordResponse(message="Password has been reset successfully")
+
+
+@router.patch("/profile", response_model=UserResponse)
+async def update_profile(
+    request: ProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Update current user's profile"""
+    if request.first_name is not None:
+        current_user.first_name = request.first_name
+    if request.last_name is not None:
+        current_user.last_name = request.last_name
+    if request.phone is not None:
+        current_user.phone = request.phone
+    if request.company_name is not None:
+        current_user.company_name = request.company_name
+
+    current_user.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(current_user)
+
+    return UserResponse(
+        id=str(current_user.id),
+        email=current_user.email,
+        first_name=current_user.first_name,
+        last_name=current_user.last_name,
+        phone=current_user.phone,
+        company_name=current_user.company_name,
+        is_active=current_user.is_active,
+        is_admin=current_user.is_admin,
+        created_at=current_user.created_at,
+    )
+
+
+@router.post("/change-password", response_model=MessageResponse)
+async def change_password(
+    request: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Change current user's password"""
+    # Verify current password
+    if not verify_password(request.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect"
+        )
+
+    # Validate new password length
+    if len(request.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 8 characters"
+        )
+
+    # Update password
+    current_user.password_hash = get_password_hash(request.new_password)
+    current_user.updated_at = datetime.utcnow()
+    await db.commit()
+
+    return MessageResponse(message="Password changed successfully")

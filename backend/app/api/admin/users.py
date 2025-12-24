@@ -21,7 +21,7 @@ class RoleInfo(BaseModel):
     display_name: str
 
 
-class UserListResponse(BaseModel):
+class UserResponse(BaseModel):
     id: str
     email: str
     first_name: str
@@ -43,10 +43,30 @@ class UserUpdateRequest(BaseModel):
     phone: Optional[str] = None
     company_name: Optional[str] = None
     is_active: Optional[bool] = None
-    is_admin: Optional[bool] = None
+    # Note: is_admin is now a computed property based on roles
+    # Use role assignment to grant/revoke admin access
 
 
-@router.get("", response_model=List[UserListResponse])
+def user_to_response(user: User) -> UserResponse:
+    """Convert User model to response with roles."""
+    return UserResponse(
+        id=str(user.id),
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        phone=user.phone,
+        company_name=user.company_name,
+        is_active=user.is_active,
+        is_admin=user.is_admin,
+        roles=[
+            RoleInfo(id=str(role.id), name=role.name, display_name=role.display_name)
+            for role in (user.roles or [])
+        ],
+        created_at=user.created_at,
+    )
+
+
+@router.get("", response_model=List[UserResponse])
 async def list_users(
     admin_user: User = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db),
@@ -56,105 +76,71 @@ async def list_users(
     """List all users (admin only)"""
     result = await db.execute(
         select(User)
+        .options(selectinload(User.roles))
         .order_by(User.created_at.desc())
         .offset(skip)
         .limit(limit)
     )
     users = result.scalars().all()
-    
-    response = []
-    for user in users:
-        # VM and Billing features removed — return defaults
-        vm_count = 0
-        balance = 0.0
-        
-        response.append(UserListResponse(
-            id=str(user.id),
-            email=user.email,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            account_type=getattr(user, 'account_type', None),
-            is_active=user.is_active,
-            is_admin=user.is_admin,
-            vm_count=vm_count,
-            wallet_balance=balance,
-            created_at=user.created_at,
-        ))
-    
-    return response
+    return [user_to_response(user) for user in users]
 
 
-@router.get("/{user_id}", response_model=UserDetailResponse)
+@router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: UUID,
     admin_user: User = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get user details (admin only)"""
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.roles))
+        .where(User.id == user_id)
+    )
     user = result.scalar_one_or_none()
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    # VM and Billing features removed — return defaults
-    vm_count = 0
-    balance = 0.0
-    
-    return UserDetailResponse(
-        id=str(user.id),
-        email=user.email,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        phone=user.phone,
-        company_name=user.company_name,
-        account_type=user.account_type,
-        is_active=user.is_active,
-        is_admin=user.is_admin,
-        vm_count=vm_count,
-        wallet_balance=balance,
-        created_at=user.created_at,
-    )
+
+    return user_to_response(user)
 
 
-@router.patch("/{user_id}", response_model=UserDetailResponse)
+@router.patch("/{user_id}", response_model=UserResponse)
 async def update_user(
     user_id: UUID,
     request: UserUpdateRequest,
     admin_user: User = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Update user (admin only)"""
-    result = await db.execute(select(User).where(User.id == user_id))
+    """Update user (admin only). Admins cannot modify their own account."""
+    # Prevent admin from modifying self
+    if user_id == admin_user.id:
+        raise HTTPException(status_code=403, detail="Cannot modify your own account")
+
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.roles))
+        .where(User.id == user_id)
+    )
     user = result.scalar_one_or_none()
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
+    # Update fields if provided
+    if request.first_name is not None:
+        user.first_name = request.first_name
+    if request.last_name is not None:
+        user.last_name = request.last_name
+    if request.phone is not None:
+        user.phone = request.phone
+    if request.company_name is not None:
+        user.company_name = request.company_name
     if request.is_active is not None:
         user.is_active = request.is_active
-    if request.is_admin is not None:
-        user.is_admin = request.is_admin
-    
+    # Note: is_admin is computed from roles, use role assignment instead
+
     await db.commit()
     await db.refresh(user)
-    
-    # Get counts for response
-    # VM and Billing features removed — return defaults
-    vm_count = 0
-    balance = 0.0
-    
-    return UserDetailResponse(
-        id=str(user.id),
-        email=user.email,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        phone=user.phone,
-        company_name=user.company_name,
-        account_type=user.account_type,
-        is_active=user.is_active,
-        is_admin=user.is_admin,
-        vm_count=vm_count,
-        wallet_balance=balance,
-        created_at=user.created_at,
-    )
+
+    return user_to_response(user)

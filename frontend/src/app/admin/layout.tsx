@@ -11,7 +11,8 @@ import {
   LogOut,
   Menu,
   X,
-  ArrowLeft
+  ArrowLeft,
+  UserCircle
 } from 'lucide-react'
 
 interface User {
@@ -34,22 +35,37 @@ export default function AdminLayout({
 
   useEffect(() => {
     const token = localStorage.getItem('token')
-    const userData = localStorage.getItem('user')
 
     if (!token) {
-      router.push('/login')
+      router.push(`/login?redirect=${encodeURIComponent(pathname)}`)
       return
     }
 
-    if (userData) {
-      const parsedUser = JSON.parse(userData)
-      if (!parsedUser.is_admin) {
-        router.push('/dashboard')
-        return
+    // Always validate token with API
+    const validateAndFetchUser = async () => {
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (!response.ok) throw new Error('Invalid token')
+        const userData = await response.json()
+
+        if (!userData.is_admin) {
+          router.push('/dashboard')
+          return
+        }
+
+        localStorage.setItem('user', JSON.stringify(userData))
+        setUser(userData)
+      } catch {
+        // Token invalid, clear and redirect to login
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        router.push(`/login?redirect=${encodeURIComponent(pathname)}`)
       }
-      setUser(parsedUser)
     }
-  }, [router])
+    validateAndFetchUser()
+  }, [router, pathname])
 
   const handleLogout = () => {
     localStorage.removeItem('token')
@@ -100,7 +116,7 @@ export default function AdminLayout({
             </button>
           </div>
 
-          {/* Back to Dashboard */}
+          {/* Back to Dashboard - commented out as admin uses admin dashboard only
           <div className="p-4">
             <Link
               href="/dashboard"
@@ -110,6 +126,7 @@ export default function AdminLayout({
               Back to Dashboard
             </Link>
           </div>
+          */}
 
           {/* Navigation */}
           <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
@@ -148,13 +165,22 @@ export default function AdminLayout({
                 </p>
               </div>
             </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition"
-            >
-              <LogOut size={18} />
-              Sign Out
-            </button>
+            <div className="space-y-1">
+              <Link
+                href="/admin/profile"
+                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition"
+              >
+                <UserCircle size={18} />
+                Profile
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition"
+              >
+                <LogOut size={18} />
+                Sign Out
+              </button>
+            </div>
           </div>
         </div>
       </aside>

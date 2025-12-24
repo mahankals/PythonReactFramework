@@ -1,8 +1,8 @@
-"""Initial migration
+"""Initial migration - Users, RBAC, Config
 
 Revision ID: 001
-Revises: 
-Create Date: 2025-12-13
+Revises:
+Create Date: 2025-12-24
 
 """
 from typing import Sequence, Union
@@ -11,7 +11,6 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-# revision identifiers, used by Alembic.
 revision: str = '001'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
@@ -27,176 +26,105 @@ def upgrade() -> None:
         sa.Column('first_name', sa.String(100), nullable=False),
         sa.Column('last_name', sa.String(100), nullable=False),
         sa.Column('phone', sa.String(20), nullable=True),
-        sa.Column('account_type', sa.Enum('INDIVIDUAL', 'BUSINESS', name='accounttype'), nullable=False),
         sa.Column('company_name', sa.String(255), nullable=True),
+        sa.Column('email_verified', sa.Boolean(), nullable=True, default=False),
         sa.Column('is_active', sa.Boolean(), nullable=True, default=True),
-        sa.Column('is_admin', sa.Boolean(), nullable=True, default=False),
+        sa.Column('is_superadmin', sa.Boolean(), nullable=True, default=False),
         sa.Column('created_at', sa.DateTime(), nullable=True),
         sa.Column('updated_at', sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint('id')
     )
     op.create_index('ix_users_email', 'users', ['email'], unique=True)
 
-    # Regions table
-    op.create_table('regions',
+    # Permissions table
+    op.create_table('permissions',
+        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('name', sa.String(100), nullable=False),
+        sa.Column('display_name', sa.String(150), nullable=False),
+        sa.Column('description', sa.Text(), nullable=True),
+        sa.Column('resource', sa.String(50), nullable=False),
+        sa.Column('action', sa.String(50), nullable=False),
+        sa.Column('is_active', sa.Boolean(), nullable=True, default=True),
+        sa.Column('created_at', sa.DateTime(), nullable=True),
+        sa.Column('updated_at', sa.DateTime(), nullable=True),
+        sa.PrimaryKeyConstraint('id'),
+        sa.UniqueConstraint('name'),
+        sa.UniqueConstraint('resource', 'action', name='uq_permission_resource_action')
+    )
+    op.create_index('ix_permissions_resource', 'permissions', ['resource'])
+
+    # Roles table
+    op.create_table('roles',
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('name', sa.String(50), nullable=False),
         sa.Column('display_name', sa.String(100), nullable=False),
-        sa.Column('keystone_url', sa.String(255), nullable=False),
-        sa.Column('nova_url', sa.String(255), nullable=False),
-        sa.Column('glance_url', sa.String(255), nullable=False),
-        sa.Column('cinder_url', sa.String(255), nullable=False),
-        sa.Column('neutron_url', sa.String(255), nullable=False),
-        sa.Column('admin_username', sa.String(100), nullable=False),
-        sa.Column('admin_password', sa.String(255), nullable=False),
-        sa.Column('admin_project', sa.String(100), nullable=False),
-        sa.Column('admin_domain', sa.String(100), nullable=True, default='Default'),
-        sa.Column('default_network_id', sa.String(100), nullable=True),
+        sa.Column('description', sa.Text(), nullable=True),
+        sa.Column('is_system', sa.Boolean(), nullable=True, default=False),
+        sa.Column('priority', sa.Integer(), nullable=True, default=0),
         sa.Column('is_active', sa.Boolean(), nullable=True, default=True),
         sa.Column('created_at', sa.DateTime(), nullable=True),
+        sa.Column('updated_at', sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('name')
     )
 
-    # Projects table
-    op.create_table('projects',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('name', sa.String(100), nullable=False),
-        sa.Column('openstack_project_id', sa.String(100), nullable=True),
-        sa.Column('is_default', sa.Boolean(), nullable=True, default=False),
+    # Role-Permission association table
+    op.create_table('role_permissions',
+        sa.Column('role_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('permission_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id']),
-        sa.PrimaryKeyConstraint('id')
+        sa.ForeignKeyConstraint(['role_id'], ['roles.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['permission_id'], ['permissions.id'], ondelete='CASCADE'),
+        sa.PrimaryKeyConstraint('role_id', 'permission_id')
     )
 
-    # Flavors table
-    op.create_table('flavors',
+    # User-Role association table
+    op.create_table('user_roles',
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('role_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('assigned_at', sa.DateTime(), nullable=True),
+        sa.Column('assigned_by', postgresql.UUID(as_uuid=True), nullable=True),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['role_id'], ['roles.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['assigned_by'], ['users.id']),
+        sa.PrimaryKeyConstraint('user_id', 'role_id')
+    )
+
+    # Password Reset Tokens table
+    op.create_table('password_reset_tokens',
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('region_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('openstack_id', sa.String(100), nullable=False),
-        sa.Column('name', sa.String(100), nullable=False),
-        sa.Column('vcpus', sa.Integer(), nullable=False),
-        sa.Column('ram_mb', sa.Integer(), nullable=False),
-        sa.Column('disk_gb', sa.Integer(), nullable=False),
-        sa.Column('category', sa.String(50), nullable=True),
-        sa.Column('price_hourly_inr', sa.Numeric(10, 4), nullable=True),
-        sa.Column('price_monthly_inr', sa.Numeric(10, 2), nullable=True),
-        sa.Column('price_hourly_usd', sa.Numeric(10, 4), nullable=True),
-        sa.Column('price_monthly_usd', sa.Numeric(10, 2), nullable=True),
-        sa.Column('is_active', sa.Boolean(), nullable=True, default=True),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('token', sa.String(255), nullable=False),
+        sa.Column('expires_at', sa.DateTime(), nullable=False),
+        sa.Column('used', sa.Boolean(), nullable=True, default=False),
+        sa.Column('created_at', sa.DateTime(), nullable=True),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+        sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('ix_password_reset_tokens_token', 'password_reset_tokens', ['token'], unique=True)
+
+    # App Config table
+    op.create_table('app_config',
+        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('key', sa.String(100), nullable=False),
+        sa.Column('value', sa.Text(), nullable=True),
+        sa.Column('description', sa.String(500), nullable=True),
+        sa.Column('value_type', sa.String(20), nullable=True, default='string'),
+        sa.Column('category', sa.String(50), nullable=True, default='general'),
+        sa.Column('is_secret', sa.Boolean(), nullable=True, default=False),
+        sa.Column('is_editable', sa.Boolean(), nullable=True, default=True),
         sa.Column('created_at', sa.DateTime(), nullable=True),
         sa.Column('updated_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['region_id'], ['regions.id']),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('region_id', 'openstack_id', name='uq_flavor_region_openstack')
-    )
-
-    # Images table
-    op.create_table('images',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('region_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('openstack_id', sa.String(100), nullable=False),
-        sa.Column('name', sa.String(100), nullable=False),
-        sa.Column('os_type', sa.String(50), nullable=True),
-        sa.Column('os_distro', sa.String(50), nullable=True),
-        sa.Column('os_version', sa.String(50), nullable=True),
-        sa.Column('min_disk_gb', sa.Integer(), nullable=True, default=0),
-        sa.Column('min_ram_mb', sa.Integer(), nullable=True, default=0),
-        sa.Column('is_active', sa.Boolean(), nullable=True, default=True),
-        sa.Column('created_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['region_id'], ['regions.id']),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('region_id', 'openstack_id', name='uq_image_region_openstack')
-    )
-
-    # Virtual Machines table
-    op.create_table('virtual_machines',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('project_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('region_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('name', sa.String(100), nullable=False),
-        sa.Column('openstack_id', sa.String(100), nullable=True),
-        sa.Column('flavor_id', sa.String(100), nullable=False),
-        sa.Column('flavor_name', sa.String(100), nullable=True),
-        sa.Column('vcpus', sa.Integer(), nullable=True),
-        sa.Column('ram_mb', sa.Integer(), nullable=True),
-        sa.Column('disk_gb', sa.Integer(), nullable=True),
-        sa.Column('image_id', sa.String(100), nullable=False),
-        sa.Column('image_name', sa.String(100), nullable=True),
-        sa.Column('status', sa.Enum('PENDING', 'BUILDING', 'ACTIVE', 'STOPPED', 'PAUSED', 'ERROR', 'DELETED', name='vmstatus'), nullable=False),
-        sa.Column('power_state', sa.String(50), nullable=True),
-        sa.Column('error_message', sa.String(500), nullable=True),
-        sa.Column('ip_address', sa.String(50), nullable=True),
-        sa.Column('hourly_price', sa.Numeric(10, 4), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=True),
-        sa.Column('updated_at', sa.DateTime(), nullable=True),
-        sa.Column('deleted_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id']),
-        sa.ForeignKeyConstraint(['project_id'], ['projects.id']),
-        sa.ForeignKeyConstraint(['region_id'], ['regions.id']),
         sa.PrimaryKeyConstraint('id')
     )
-
-    # Wallets table
-    op.create_table('wallets',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('balance', sa.Numeric(12, 2), nullable=True, default=0),
-        sa.Column('currency', sa.String(3), nullable=True, default='INR'),
-        sa.Column('updated_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id']),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('user_id')
-    )
-
-    # Wallet Transactions table
-    op.create_table('wallet_transactions',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('wallet_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('type', sa.Enum('CREDIT', 'DEBIT', name='transactiontype'), nullable=False),
-        sa.Column('amount', sa.Numeric(12, 2), nullable=False),
-        sa.Column('balance_after', sa.Numeric(12, 2), nullable=False),
-        sa.Column('description', sa.String(255), nullable=True),
-        sa.Column('reference_type', sa.Enum('TOPUP', 'USAGE', 'REFUND', 'BONUS', name='referencetype'), nullable=True),
-        sa.Column('reference_id', postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['wallet_id'], ['wallets.id']),
-        sa.PrimaryKeyConstraint('id')
-    )
-
-    # Usage Records table
-    op.create_table('usage_records',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('vm_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('start_time', sa.DateTime(), nullable=False),
-        sa.Column('end_time', sa.DateTime(), nullable=True),
-        sa.Column('hourly_rate', sa.Numeric(10, 4), nullable=False),
-        sa.Column('total_hours', sa.Numeric(10, 2), nullable=True),
-        sa.Column('total_cost', sa.Numeric(10, 2), nullable=True),
-        sa.Column('status', sa.Enum('ACTIVE', 'BILLED', 'PAID', name='usagestatus'), nullable=False),
-        sa.Column('created_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id']),
-        sa.ForeignKeyConstraint(['vm_id'], ['virtual_machines.id']),
-        sa.PrimaryKeyConstraint('id')
-    )
+    op.create_index('ix_app_config_key', 'app_config', ['key'], unique=True)
 
 
 def downgrade() -> None:
-    op.drop_table('usage_records')
-    op.drop_table('wallet_transactions')
-    op.drop_table('wallets')
-    op.drop_table('virtual_machines')
-    op.drop_table('images')
-    op.drop_table('flavors')
-    op.drop_table('projects')
-    op.drop_table('regions')
+    op.drop_table('app_config')
+    op.drop_table('password_reset_tokens')
+    op.drop_table('user_roles')
+    op.drop_table('role_permissions')
+    op.drop_table('roles')
+    op.drop_table('permissions')
     op.drop_table('users')
-    
-    op.execute('DROP TYPE IF EXISTS usagestatus')
-    op.execute('DROP TYPE IF EXISTS referencetype')
-    op.execute('DROP TYPE IF EXISTS transactiontype')
-    op.execute('DROP TYPE IF EXISTS vmstatus')
-    op.execute('DROP TYPE IF EXISTS accounttype')

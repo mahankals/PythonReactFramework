@@ -29,6 +29,7 @@ export default function AdminUsersPage() {
   const [showModal, setShowModal] = useState(false)
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null)
   const [saving, setSaving] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   // Form state
   const [formFirstName, setFormFirstName] = useState('')
@@ -36,12 +37,21 @@ export default function AdminUsersPage() {
   const [formPhone, setFormPhone] = useState('')
   const [formCompanyName, setFormCompanyName] = useState('')
   const [formIsActive, setFormIsActive] = useState(true)
-  const [formIsAdmin, setFormIsAdmin] = useState(false)
   const [formRoles, setFormRoles] = useState<string[]>([])
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
   useEffect(() => {
+    // Get current user ID from localStorage
+    const userStr = localStorage.getItem('user')
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr)
+        setCurrentUserId(user.id)
+      } catch (e) {
+        console.error('Failed to parse user from localStorage')
+      }
+    }
     fetchData()
   }, [])
 
@@ -71,7 +81,6 @@ export default function AdminUsersPage() {
     setFormPhone(user.phone || '')
     setFormCompanyName(user.company_name || '')
     setFormIsActive(user.is_active)
-    setFormIsAdmin(user.is_admin)
     setFormRoles(user.roles?.map(r => r.id) || [])
     setShowModal(true)
   }
@@ -97,7 +106,6 @@ export default function AdminUsersPage() {
           phone: formPhone || undefined,
           company_name: formCompanyName || undefined,
           is_active: formIsActive,
-          is_admin: formIsAdmin,
         })
       })
 
@@ -201,20 +209,19 @@ export default function AdminUsersPage() {
                 </td>
                 <td className="px-4 py-3 hidden md:table-cell">
                   <div className="flex flex-wrap gap-1">
-                    {user.is_admin && (
-                      <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                        Admin
-                      </span>
-                    )}
                     {user.roles?.map((role) => (
                       <span
                         key={role.id}
-                        className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                        className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                          role.name === 'admin' || role.name === 'superadmin'
+                            ? 'bg-purple-100 text-purple-800'
+                            : 'bg-blue-100 text-blue-800'
+                        }`}
                       >
                         {role.display_name}
                       </span>
                     ))}
-                    {!user.is_admin && (!user.roles || user.roles.length === 0) && (
+                    {(!user.roles || user.roles.length === 0) && (
                       <span className="text-sm text-muted-foreground">No roles</span>
                     )}
                   </div>
@@ -229,24 +236,28 @@ export default function AdminUsersPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <button
-                      onClick={() => openEditModal(user)}
-                      className="p-2 text-gray-500 hover:text-primary hover:bg-gray-100 rounded-lg transition"
-                    >
-                      <Pencil size={16} />
-                    </button>
-                    <button
-                      onClick={() => toggleUserActive(user)}
-                      className={`text-sm px-3 py-1 rounded-lg transition ${
-                        user.is_active
-                          ? 'text-red-600 hover:bg-red-50'
-                          : 'text-green-600 hover:bg-green-50'
-                      }`}
-                    >
-                      {user.is_active ? 'Deactivate' : 'Activate'}
-                    </button>
-                  </div>
+                  {user.id === currentUserId ? (
+                    <span className="text-xs text-muted-foreground italic">You</span>
+                  ) : (
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => openEditModal(user)}
+                        className="p-2 text-gray-500 hover:text-primary hover:bg-gray-100 rounded-lg transition"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        onClick={() => toggleUserActive(user)}
+                        className={`text-sm px-3 py-1 rounded-lg transition ${
+                          user.is_active
+                            ? 'text-red-600 hover:bg-red-50'
+                            : 'text-green-600 hover:bg-green-50'
+                        }`}
+                      >
+                        {user.is_active ? 'Deactivate' : 'Activate'}
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}
@@ -331,15 +342,6 @@ export default function AdminUsersPage() {
                     className="rounded border-gray-300 text-primary focus:ring-primary"
                   />
                   <span className="text-sm">Active</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formIsAdmin}
-                    onChange={(e) => setFormIsAdmin(e.target.checked)}
-                    className="rounded border-gray-300 text-primary focus:ring-primary"
-                  />
-                  <span className="text-sm">Admin</span>
                 </label>
               </div>
 

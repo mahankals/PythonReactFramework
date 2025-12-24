@@ -6,9 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.config import settings
-from app.database import engine, Base
+from app.database import engine, Base, AsyncSessionLocal
 from app.api import auth, users
 from app.api.admin import admin_router
+from app.startup import run_startup_tasks
 
 # Configure logging
 def setup_logging():
@@ -41,10 +42,12 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.app_name} in {settings.environment} mode")
     logger.info(f"Debug: {settings.debug}, Log Level: {settings.log_level}")
 
-    # Create tables (for development, use migrations in production)
-    if settings.environment == "development":
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+    # Tables are created via migrations (alembic upgrade head)
+    # Don't auto-create tables here
+
+    # Auto-seed RBAC, superadmin, and config on startup
+    async with AsyncSessionLocal() as db:
+        await run_startup_tasks(db)
 
     yield
 

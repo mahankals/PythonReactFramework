@@ -1,0 +1,58 @@
+### SampleApp API - Admin User Management Endpoints
+### VSCode REST Client Extension: https://marketplace.visualstudio.com/items?itemName=humao.rest-client
+### Uses variables from backend/.env (configured in .vscode/settings.json)
+### Requires: Admin authentication
+
+@contentType = application/json
+
+### Get token from auth.rest login endpoint first
+@token = your_jwt_token_here
+
+### Sample user ID (update with actual UUID)
+@userId = 00000000-0000-0000-0000-000000000000
+
+
+### ===== USER MANAGEMENT =====
+
+### List All Users
+GET {{$dotenv API_URL}}/api/admin/users
+Authorization: Bearer {{token}}
+
+### List Users with Pagination
+GET {{$dotenv API_URL}}/api/admin/users?skip=0&limit=10
+Authorization: Bearer {{token}}
+
+### Get User by ID
+GET {{$dotenv API_URL}}/api/admin/users/{{userId}}
+Authorization: Bearer {{token}}
+
+### Update User
+# Note: Admins cannot modify their own account
+PATCH {{$dotenv API_URL}}/api/admin/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+    "first_name": "Updated",
+    "last_name": "Name",
+    "phone": "+1234567890",
+    "company_name": "New Company"
+}
+
+### Activate User
+PATCH {{$dotenv API_URL}}/api/admin/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+    "is_active": true
+}
+
+### Deactivate User
+PATCH {{$dotenv API_URL}}/api/admin/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+    "is_active": false
+}
