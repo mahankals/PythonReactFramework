@@ -111,7 +111,7 @@ docker compose logs -f backend
 docker compose logs -f frontend
 
 # Access DB
-docker compose exec db psql -U cloudpe -d cloudpe
+docker compose exec base-app-db psql -U sampleapp -d sampleapp
 
 # Run tests
 docker compose exec backend pytest

@@ -1,5 +1,5 @@
 {
-  "name": "cloudpe-frontend",
+  "name": "sampleapp-frontend",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -21,7 +21,10 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.460.0",
-    "tailwind-merge": "^2.5.4"
+    "tailwind-merge": "^2.5.4",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "rotating-file-stream": "^3.2.5"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

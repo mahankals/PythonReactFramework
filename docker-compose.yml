@@ -1,102 +1,191 @@
+# BaseApp - API-Gateway-based Microservices Architecture
+# Database-per-Service pattern for scalability
+
+networks:
+  app-network:
+    driver: bridge
+
 services:
-  db:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_USER: cloudpe
-      POSTGRES_PASSWORD: cloudpe
-      POSTGRES_DB: cloudpe
+  # =============================================================================
+  # API Gateway (nginx)
+  # =============================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: baseapp-nginx
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
-      - "5432:5432"
+      - "${NGINX_PORT:-80}:80"
+    depends_on:
+      base-app-backend:
+        condition: service_healthy
+      base-app-frontend:
+        condition: service_healthy
+    networks:
+      - app-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cloudpe -d cloudpe"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # =============================================================================
+  # BaseApp Services
+  # =============================================================================
+  base-app-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: baseapp-backend
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override database host for container networking
+      - DATABASE_HOST=base-app-db
+      - REDIS_URL=redis://redis:6379/0
+      # Use Mailpit for local email testing
+      - SMTP_HOST=mailpit
+      - SMTP_PORT=1025
+      - SMTP_USE_TLS=false
+    volumes:
+      - ./backend:/app
+      - /app/.venv  # Exclude venv from mount
+    depends_on:
+      base-app-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  base-app-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: baseapp-frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:${NGINX_PORT:-80}/api
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # Exclude node_modules from mount
+      - /app/.next  # Exclude .next from mount
+    depends_on:
+      - base-app-backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # =============================================================================
+  # BaseApp Database (PostgreSQL 17)
+  # =============================================================================
+  base-app-db:
+    image: postgres:17-alpine
+    container_name: baseapp-db
+    environment:
+      POSTGRES_USER: sampleapp
+      POSTGRES_PASSWORD: sampleapp
+      POSTGRES_DB: sampleapp
+    volumes:
+      - base-app-db-data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sampleapp -d sampleapp"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
+  # =============================================================================
+  # Shared Infrastructure
+  # =============================================================================
   redis:
-    image: redis:8.0-alpine
+    image: redis:8-alpine
+    container_name: baseapp-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - app-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
+  # =============================================================================
+  # Development Tools
+  # =============================================================================
   mailpit:
-    image: axllent/mailpit:latest
+    image: axllent/mailpit
+    container_name: baseapp-mailpit
     ports:
-      - "8025:8025"   # Web UI
-      - "1025:1025"   # SMTP
-    environment:
-      MP_SMTP_AUTH_ACCEPT_ANY: 1
-      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+      - "${MAILPIT_HTTP_PORT:-8025}:8025"  # Web UI
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"  # SMTP
+    networks:
+      - app-network
+    restart: unless-stopped
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
-    volumes:
-      - ./backend:/app
-    ports:
-      - "8000:8000"
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      mailpit:
-        condition: service_started
-    env_file:
-      - ./backend/.env
-    environment:
-      - DATABASE_URL=postgresql://cloudpe:cloudpe@db:5432/cloudpe
-      - REDIS_URL=redis://redis:6379/0
-      - SMTP_HOST=mailpit
-      - SMTP_PORT=1025
-      - SMTP_USE_TLS=false
+  # =============================================================================
+  # Future Microservices (Database-per-Service pattern)
+  # Each service has its own database for isolation and scalability
+  # =============================================================================
+  # auth-service:
+  #   build: ./services/auth
+  #   container_name: auth-service
+  #   environment:
+  #     DATABASE_USER: auth
+  #     DATABASE_SECRET: auth
+  #     DATABASE_HOST: auth-db
+  #     DATABASE_PORT: 5432
+  #     DATABASE_NAME: auth
+  #   depends_on:
+  #     auth-db:
+  #       condition: service_healthy
+  #   networks:
+  #     - app-network
 
-  celery:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    command: celery -A app.tasks.celery_app worker --loglevel=info
-    volumes:
-      - ./backend:/app
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      mailpit:
-        condition: service_started
-    env_file:
-      - ./backend/.env
-    environment:
-      - DATABASE_URL=postgresql://cloudpe:cloudpe@db:5432/cloudpe
-      - REDIS_URL=redis://redis:6379/0
-      - SMTP_HOST=mailpit
-      - SMTP_PORT=1025
-      - SMTP_USE_TLS=false
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    command: npm run dev
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-    depends_on:
-      - backend
+  # auth-db:
+  #   image: postgres:17-alpine
+  #   container_name: auth-db
+  #   environment:
+  #     POSTGRES_USER: auth
+  #     POSTGRES_PASSWORD: auth
+  #     POSTGRES_DB: auth
+  #   volumes:
+  #     - auth-db-data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U auth -d auth"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - app-network
 
 volumes:
-  postgres_data:
+  base-app-db-data:
+  redis-data:
+  # auth-db-data:  # Uncomment when auth-service is added

@@ -1,5 +1,4 @@
 import logging
-import sys
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,30 +9,11 @@ from app.database import engine, Base, AsyncSessionLocal
 from app.api import auth, users
 from app.api.admin import admin_router
 from app.startup import run_startup_tasks
+from app.utils.logger import logger
 
-# Configure logging
-def setup_logging():
-    log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
-
-    if settings.json_logs:
-        # JSON format for production
-        log_format = '{"time": "%(asctime)s", "level": "%(levelname)s", "name": "%(name)s", "message": "%(message)s"}'
-    else:
-        # Human-readable format for development
-        log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-
-    logging.basicConfig(
-        level=log_level,
-        format=log_format,
-        handlers=[logging.StreamHandler(sys.stdout)]
-    )
-
-    # Reduce noise from third-party libraries
-    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-
-setup_logging()
-logger = logging.getLogger(__name__)
+# Reduce noise from third-party libraries
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 
 @asynccontextmanager

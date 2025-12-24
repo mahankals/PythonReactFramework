@@ -203,7 +203,7 @@ docker compose exec backend bash
 docker compose exec backend alembic revision --autogenerate -m "description"
 
 # Access database
-docker compose exec db psql -U cloudpe -d cloudpe
+docker compose exec base-app-db psql -U sampleapp -d sampleapp
 
 # Create additional super admin
 docker compose exec -it backend python -m app.create_admin
